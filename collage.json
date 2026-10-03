@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Elagoht/collage-snippets-highlighter/main/schemas/collage-plugin-manifest.schema.json",
+  "name": "elagoht/tenant",
+  "description": "A collage plugin that serves one site to many customers, each on a host of its own — acme.app.com, globex.app.com, or a customer's own domain — with every absolute URL the site writes following the host.",
+  "repository": "https://github.com/Elagoht/collage-tenant",
+  "config": {
+    "type": "object",
+    "description": "A collage plugin that serves one site to many customers, each on a host of its own — acme.app.com, globex.app.com, or a customer's own domain — with every absolute URL the site writes following the host.",
+    "properties": {
+      "bypass": {
+        "type": "array",
+        "description": "Bypass are hosts served without a tenant: the product's own site, say, on app.com.",
+        "items": {
+          "type": "string"
+        }
+      },
+      "maxHosts": {
+        "type": "integer",
+        "description": "MaxHosts bounds how many hosts' answers are kept, so a client sending random Host headers cannot grow memory or make Resolve run without end. Default 10000."
+      },
+      "tenants": {
+        "type": "array",
+        "description": "Tenants are the tenants known from configuration. They are looked up before Resolve.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "hosts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "id": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "ttl": {
+        "description": "TTL is how long Resolve's answer for a host is kept, \"is no tenant\" included. Default \"1m\".",
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^(\\d+(\\.\\d+)?(ns|us|µs|ms|s|m|h))+$",
+            "examples": [
+              "30s",
+              "5m"
+            ]
+          },
+          {
+            "type": "integer",
+            "description": "nanoseconds"
+          }
+        ]
+      }
+    },
+    "additionalProperties": false
+  }
+}
