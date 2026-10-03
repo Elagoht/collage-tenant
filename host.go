@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,9 +26,67 @@ func normalize(host string) string {
 	return string(b)
 }
 
-// Temporary stubs; C2 and C3 replace them.
-type hostCache struct{}
+// hostCache keeps Resolve's answers per host, positive and negative, for a TTL,
+// and at most max hosts of them, the oldest dropped first.
+type hostCache struct {
+	mu    sync.Mutex
+	max   int
+	ttl   time.Duration
+	items map[string]cached
+	order []string // hosts in items, oldest first
+}
 
-func newHostCache(int, time.Duration) *hostCache { return &hostCache{} }
+type cached struct {
+	tenant  Tenant
+	known   bool
+	expires time.Time
+}
+
+func newHostCache(max int, ttl time.Duration) *hostCache {
+	return &hostCache{max: max, ttl: ttl, items: make(map[string]cached)}
+}
+
+// get returns host's answer and whether one is held and still fresh.
+func (c *hostCache) get(host string, now time.Time) (Tenant, bool, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.items[host]
+	if !ok || !now.Before(e.expires) {
+		return Tenant{}, false, false
+	}
+	return e.tenant, e.known, true
+}
+
+// put records host's answer, dropping the oldest hosts beyond max.
+func (c *hostCache) put(host string, t Tenant, known bool, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, held := c.items[host]; !held {
+		for len(c.order) >= c.max {
+			delete(c.items, c.order[0])
+			c.order = c.order[1:]
+		}
+		c.order = append(c.order, host)
+	}
+	c.items[host] = cached{tenant: t, known: known, expires: now.Add(c.ttl)}
+}
+
+// byID finds a tenant some cached host resolved to.
+func (c *hostCache) byID(id string) (Tenant, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, e := range c.items {
+		if e.known && e.tenant.ID == id {
+			return e.tenant, true
+		}
+	}
+	return Tenant{}, false
+}
+
+func (c *hostCache) len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.items)
+}
 
 func (p *Plugin) middleware(next http.Handler) http.Handler { return next }
