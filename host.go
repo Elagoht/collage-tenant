@@ -2,7 +2,6 @@ package tenant
 
 import (
 	"net"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -88,5 +87,3 @@ func (c *hostCache) len() int {
 	defer c.mu.Unlock()
 	return len(c.items)
 }
-
-func (p *Plugin) middleware(next http.Handler) http.Handler { return next }
