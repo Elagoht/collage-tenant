@@ -115,6 +115,8 @@ func TestResolverFailures(t *testing.T) {
 			panic("boom")
 		case host == "bad.test":
 			return tenant.Tenant{ID: "bad", Origin: "not-an-origin"}, true, nil
+		case host == "nohost.test":
+			return tenant.Tenant{ID: "nohost", Origin: "https://:8080"}, true, nil
 		case fail.Load():
 			return tenant.Tenant{}, false, errors.New("database down")
 		}
@@ -130,6 +132,53 @@ func TestResolverFailures(t *testing.T) {
 	}
 	c.Get("http://panic.test/").WantStatus(http.StatusServiceUnavailable)
 	c.Get("http://bad.test/").WantStatus(http.StatusServiceUnavailable)
+	c.Get("http://nohost.test/").WantStatus(http.StatusServiceUnavailable)
+}
+
+// The resolver fails between the middleware's lookup and the render's: the TTL
+// ran out while the page rendered. The render keeps the tenant's last known
+// origin rather than falling back to Config.BaseURL, which would be cached for
+// the tenant.
+func TestResolverBlipDuringRender(t *testing.T) {
+	var calls atomic.Int32
+	app, err := collage.New(&collage.Config{
+		BaseURL:  "https://app.example",
+		Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
+		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>{{.}}</p>`)}}, Root: "t"},
+		Cache:    collage.CacheConfig{Enabled: true, Type: "memory", DefaultTTL: time.Hour},
+		Plugins: []collage.Plugin{tenant.NewWith(tenant.Options{
+			TTL: tenant.Duration(5 * time.Millisecond),
+			Resolve: func(context.Context, string) (tenant.Tenant, bool, error) {
+				if calls.Add(1) == 2 {
+					return tenant.Tenant{}, false, errors.New("database blip")
+				}
+				return tenant.Tenant{ID: "acme", Origin: "https://acme.example"}, true, nil
+			},
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := collage.NewFragment("p", "p.html").WithDataHandler(collage.DataHandler(
+		func(_ context.Context, rc *collage.RenderContext) (string, []string, error) {
+			time.Sleep(20 * time.Millisecond) // past the TTL
+			return collage.BaseURL(rc), nil, nil
+		})).Build()
+	if err := app.RegisterPage(collage.NewPage("home").WithContent(content).WithPath("en", "/").Incremental(time.Hour).Build()); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Start(); err != nil {
+		t.Fatal(err)
+	}
+	c := collagetest.New(t, app.Handler())
+	for range 2 { // the second is the cached copy
+		if got := c.Get("http://acme.test/").WantStatus(http.StatusOK).Body; !strings.Contains(got, "<p>https://acme.example</p>") {
+			t.Errorf("GET acme.test = %q, want acme's origin", got)
+		}
+	}
+	if n := calls.Load(); n < 2 {
+		t.Fatalf("Resolve called %d times; the render did not re-resolve, so the blip was not exercised", n)
+	}
 }
 
 func TestSpoofedHeaderInert(t *testing.T) {

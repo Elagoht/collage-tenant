@@ -1,7 +1,12 @@
 package tenant
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"log/slog"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -59,5 +64,40 @@ func TestHostCache_Bounded(t *testing.T) {
 	c.put("h49999.test", Tenant{}, false, now)
 	if n := c.len(); n > 100 {
 		t.Errorf("len = %d after a refresh", n)
+	}
+}
+
+// Origin, past the TTL with Resolve failing, answers the host's last known
+// tenant's origin, and logs the error; a stale "no tenant" is not reused.
+func TestOrigin_StaleIfError(t *testing.T) {
+	var logs bytes.Buffer
+	p := &Plugin{
+		opts: Options{Resolve: func(context.Context, string) (Tenant, bool, error) {
+			return Tenant{}, false, errors.New("database down")
+		}},
+		log:    slog.New(slog.NewTextHandler(&logs, nil)),
+		static: map[string]Tenant{},
+		bypass: map[string]bool{},
+		cache:  newHostCache(10, time.Minute),
+	}
+	past := time.Now().Add(-2 * time.Minute)
+	p.cache.put("acme.test", Tenant{ID: "acme", Origin: "https://acme.example"}, true, past)
+	p.cache.put("nobody.test", Tenant{}, false, past)
+
+	if origin, ok := p.Origin(context.Background(), "acme.test"); !ok || origin != "https://acme.example" {
+		t.Errorf("Origin(acme.test) = %q, %v; want the last known https://acme.example", origin, ok)
+	}
+	if !strings.Contains(logs.String(), "database down") {
+		t.Errorf("the error was not logged: %q", logs.String())
+	}
+	if origin, ok := p.Origin(context.Background(), "nobody.test"); ok {
+		t.Errorf("Origin(nobody.test) = %q, known; a stale negative must not answer", origin)
+	}
+	if origin, ok := p.Origin(context.Background(), "new.test"); ok {
+		t.Errorf("Origin(new.test) = %q, known; nothing was ever resolved for it", origin)
+	}
+	// The middleware still sees the failure: get keeps its meaning.
+	if _, _, found := p.cache.get("acme.test", time.Now()); found {
+		t.Errorf("get returned an expired entry")
 	}
 }

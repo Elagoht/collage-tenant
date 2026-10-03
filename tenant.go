@@ -14,7 +14,8 @@
 // A data handler reads the tenant with tenant.ID(rc); code that holds only a
 // context — a page's StaticParams, so each tenant's sitemap lists its own URLs —
 // with tenant.IDFromContext(ctx). Both read a cache dimension, so they are safe in
-// a cached page: acme's copy is never globex's. collage.BaseURL(rc) is the
+// a cached page: acme's copy is never globex's. collage.Cached is not kept per
+// tenant: put tenant.ID(rc) in its key and tags. collage.BaseURL(rc) is the
 // tenant's origin, which elagoht/sitemap, feed, meta, ogimage, indexnow, cdnpurge
 // and robots follow.
 //
@@ -86,7 +87,9 @@ var (
 	// ErrNoTenants is returned by Init with neither Tenants nor Resolve.
 	ErrNoTenants = errors.New("tenant: Tenants or Resolve is required")
 	// ErrInvalidTenant is returned by Init for a tenant without an ID, without
-	// hosts, or whose Origin is not a bare origin.
+	// hosts, or whose Origin is not a bare origin naming a host, and for a
+	// Bypass entry that is empty once normalized ("", "."). A Resolve answer
+	// with such an Origin fails the request with it, as a 503.
 	ErrInvalidTenant = errors.New("tenant: invalid tenant")
 	// ErrDuplicateHost is returned by Init for a host listed under two tenants.
 	ErrDuplicateHost = errors.New("tenant: a host is listed twice")
@@ -137,7 +140,7 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 	p.static = make(map[string]Tenant)
 	origins := make(map[string]string) // ID → origin
 	for _, s := range p.opts.Tenants {
-		origin, err := collage.ParseOrigin(s.Origin)
+		origin, err := parseOrigin(s.Origin)
 		if s.ID == "" || len(s.Hosts) == 0 || err != nil {
 			return fmt.Errorf("%w: %+v", ErrInvalidTenant, s)
 		}
@@ -159,6 +162,9 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 	p.bypass = make(map[string]bool)
 	for _, h := range p.opts.Bypass {
 		n := normalize(h)
+		if n == "" {
+			return fmt.Errorf("%w: an empty bypass host %q", ErrInvalidTenant, h)
+		}
 		if _, conflict := p.static[n]; conflict {
 			return fmt.Errorf("%w: %q", ErrBypassConflict, n)
 		}

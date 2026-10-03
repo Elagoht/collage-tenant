@@ -37,6 +37,9 @@ func TestInit_Misconfigurations(t *testing.T) {
 		"host twice":      {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"x.test"}}, {ID: "b", Origin: "https://b.example", Hosts: []string{"X.test:443"}}}}, tenant.ErrDuplicateHost},
 		"id two origins":  {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}, {ID: "a", Origin: "https://other.example", Hosts: []string{"a2.test"}}}}, tenant.ErrDuplicateID},
 		"bypass conflict": {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{"A.test"}}, tenant.ErrBypassConflict},
+		"origin no host":  {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://:8080", Hosts: []string{"a.test"}}}}, tenant.ErrInvalidTenant},
+		"empty bypass":    {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{""}}, tenant.ErrInvalidTenant},
+		"dot bypass":      {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{"."}}, tenant.ErrInvalidTenant},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

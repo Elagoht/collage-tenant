@@ -1,10 +1,14 @@
 package tenant
 
 import (
+	"fmt"
 	"net"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Elagoht/collage/pkg/collage"
 )
 
 // normalize is host as the plugin keys it: ASCII lower-cased, without a port or a
@@ -25,8 +29,23 @@ func normalize(host string) string {
 	return string(b)
 }
 
+// parseOrigin is collage.ParseOrigin, held to one more rule: the origin names a
+// host. "https://:8080" passes ParseOrigin, and collage ignores it as a
+// resolver's answer.
+func parseOrigin(raw string) (string, error) {
+	origin, err := collage.ParseOrigin(raw)
+	if err != nil {
+		return "", err
+	}
+	if u, err := url.Parse(origin); err != nil || u.Hostname() == "" {
+		return "", fmt.Errorf("tenant: origin %q names no host", raw)
+	}
+	return origin, nil
+}
+
 // hostCache keeps Resolve's answers per host, positive and negative, for a TTL,
-// and at most max hosts of them, the oldest dropped first.
+// and at most max hosts of them, the oldest dropped first. An expired answer is
+// kept until it is replaced or dropped, for getStale.
 type hostCache struct {
 	mu    sync.Mutex
 	max   int
@@ -54,6 +73,18 @@ func (c *hostCache) get(host string, now time.Time) (Tenant, bool, bool) {
 		return Tenant{}, false, false
 	}
 	return e.tenant, e.known, true
+}
+
+// getStale returns host's last positive answer, expired or not: what Origin
+// falls back on when Resolve fails. A held "no tenant" is not returned.
+func (c *hostCache) getStale(host string) (Tenant, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.items[host]
+	if !ok || !e.known {
+		return Tenant{}, false
+	}
+	return e.tenant, true
 }
 
 // put records host's answer, dropping the oldest hosts beyond max.

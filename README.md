@@ -3,7 +3,8 @@
 A collage plugin that serves one site to many customers, each on a host of its
 own: `acme.app.com`, `globex.app.com`, or a customer's own domain. Every absolute
 URL the site writes follows the host, and a cached page is kept per tenant, so
-acme's copy is never globex's.
+acme's copy of a page is never globex's. Data you cache yourself with
+`collage.Cached` is not kept per tenant: see [In your data](#in-your-data).
 
 ```sh
 go get github.com/Elagoht/collage-tenant
@@ -32,6 +33,8 @@ and `collage.BaseURL(rc)`.
 - A host that is no tenant's is answered `404`, with the site's own 404 page.
 - A resolver that returns an error, or panics, is answered `503` with a
   `Retry-After`, and the failure is not cached. The error is logged by the plugin.
+- A resolver that returns a tenant whose origin is not a bare origin naming a
+  host (`https://:8080` names none) is answered `503` the same way.
 - `Resolve`'s answers are cached for `ttl`, "is no tenant" included, so a client
   sending random `Host` headers cannot make the resolver run without end.
 - `X-Collage-Tenant` is the cache dimension a tenant is declared under. It is no
@@ -51,9 +54,9 @@ is `acme.test`.
 | `MaxHosts` | `maxHosts` | `10000` | How many hosts' answers are kept |
 
 Either `Tenants` or `Resolve` is required. A tenant without an ID or hosts, an
-origin that is not a bare `http` or `https` origin, a host listed twice, one ID
-with two origins, or a host both bypassed and a tenant's stops the application
-from starting. Durations are written as Go writes them, `"1m"` or `"30s"`.
+origin that is not a bare `http` or `https` origin naming a host, a host listed
+twice, one ID with two origins, a bypass host that is empty (`""`, `"."`), or a
+host both bypassed and a tenant's stops the application from starting. Durations are written as Go writes them, `"1m"` or `"30s"`.
 
 ```json
 {
@@ -77,6 +80,35 @@ t, ok := plug.Lookup(id)            // the tenant's Origin, from Tenants or a re
 
 Both read a cache dimension, so they are safe in a cached page. `ok` is false on a
 bypass host. `collage.BaseURL(rc)` is the tenant's origin.
+
+The page cache is kept per tenant; `collage.Cached` is not. Its store is one per
+process, keyed only by the key you give it, so `Cached(rc, "posts", …)` fetches
+acme's posts once and hands them to globex too. Put the tenant in the key, and in
+the tags, so invalidating one tenant's data leaves the others' alone:
+
+```go
+func posts(ctx context.Context, rc *collage.RenderContext) ([]Post, []string, error) {
+	id, _ := tenant.ID(rc)
+	list, err := collage.Cached(rc, "posts:"+id, time.Hour, []string{"posts:" + id},
+		func(ctx context.Context) ([]Post, error) { return db.Posts(ctx, id) })
+	return list, nil, err
+}
+```
+
+The same holds for anything else you keep across requests yourself: a map, an
+API client's own cache.
+
+## When the resolver fails mid-render
+
+A page's absolute URLs are named during its render, which asks for the host's
+origin again. If `ttl` ran out between the request's lookup and the render's, and
+`Resolve` fails now, the render keeps the host's last known origin, however old,
+and the error is logged. A host with no answer held, one dropped under
+`maxHosts`, say, has none to keep, and collage's origin hook has no way to report
+an error: that render
+falls back to `Config.BaseURL`, and a cacheable page keeps it until it is
+invalidated. So does a host whose tenant `Resolve` now says is gone. A `ttl`
+longer than your slowest render makes either rare.
 
 ## What follows the host
 
