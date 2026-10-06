@@ -29,7 +29,7 @@ func serving(t *testing.T, opts tenant.Options) *collagetest.Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := collage.NewFragment("p", "p.html").WithDataHandler(collage.DataHandler(
+	content := collage.NewFragment("p", "p.html").WithData(collage.DataHandler(
 		func(_ context.Context, rc *collage.RenderContext) (string, []string, error) {
 			id, _ := tenant.ID(rc)
 			return id + "@" + collage.BaseURL(rc), nil, nil
@@ -159,7 +159,7 @@ func TestResolverBlipDuringRender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := collage.NewFragment("p", "p.html").WithDataHandler(collage.DataHandler(
+	content := collage.NewFragment("p", "p.html").WithData(collage.DataHandler(
 		func(_ context.Context, rc *collage.RenderContext) (string, []string, error) {
 			time.Sleep(20 * time.Millisecond) // past the TTL
 			return collage.BaseURL(rc), nil, nil
