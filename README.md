@@ -21,8 +21,8 @@ app, err := collage.New(&collage.Config{
 })
 ```
 
-Requires collage v0.42.0 or later: it adds the origin hook this plugin implements
-and `collage.BaseURL(rc)`.
+Requires collage v0.50.0 or later; v0.42.0 added the origin hook this plugin
+implements and `collage.BaseURL(rc)`.
 
 ## How a request is answered
 
@@ -82,14 +82,16 @@ Both read a cache dimension, so they are safe in a cached page. `ok` is false on
 bypass host. `collage.BaseURL(rc)` is the tenant's origin.
 
 The page cache is kept per tenant; `collage.Cached` is not. Its store is one per
-process, keyed only by the key you give it, so `Cached(rc, "posts", …)` fetches
+process, keyed only by the key you give it, so `Cached(rc, postsKey, …)` fetches
 acme's posts once and hands them to globex too. Put the tenant in the key, and in
 the tags, so invalidating one tenant's data leaves the others' alone:
 
 ```go
+var postsKey = collage.NewKey[[]Post]("posts")
+
 func posts(ctx context.Context, rc *collage.RenderContext) ([]Post, []string, error) {
 	id, _ := tenant.ID(rc)
-	list, err := collage.Cached(rc, "posts:"+id, time.Hour, []string{"posts:" + id},
+	list, err := collage.Cached(rc, postsKey.With(id), time.Hour, []string{"posts:" + id},
 		func(ctx context.Context) ([]Post, error) { return db.Posts(ctx, id) })
 	return list, nil, err
 }

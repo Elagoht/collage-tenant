@@ -15,9 +15,9 @@
 // context — a page's StaticParams, so each tenant's sitemap lists its own URLs —
 // with tenant.IDFromContext(ctx). Both read a cache dimension, so they are safe in
 // a cached page: acme's copy is never globex's. collage.Cached is not kept per
-// tenant: put tenant.ID(rc) in its key and tags. collage.BaseURL(rc) is the
-// tenant's origin, which elagoht/sitemap, feed, meta, ogimage, indexnow, cdnpurge
-// and robots follow.
+// tenant: put tenant.ID(rc) in its key, with Key.With, and in its tags.
+// collage.BaseURL(rc) is the tenant's origin, which elagoht/sitemap, feed, meta,
+// ogimage, indexnow, cdnpurge and robots follow.
 //
 // A host that is no tenant is answered 404, with the site's own 404 page; a
 // resolver that fails, 503. A static build has no host, so it renders without a
@@ -117,15 +117,17 @@ func New() *Plugin { return NewWith(Options{}) }
 func NewWith(opts Options) *Plugin { return &Plugin{opts: opts} }
 
 func (p *Plugin) Name() string                   { return Name }
-func (p *Plugin) Version() string                { return "0.1.1" }
+func (p *Plugin) Version() string                { return "0.1.2" }
 func (p *Plugin) Shutdown(context.Context) error { return nil }
 
 // Init reads the configuration, checks the tenants, and adds the middleware that
 // resolves each request's host.
 func (p *Plugin) Init(_ context.Context, host collage.Host) error {
-	if err := host.Config(&p.opts); err != nil {
+	opts, err := collage.PluginConfig(host, p.opts)
+	if err != nil {
 		return err
 	}
+	p.opts = opts
 	if p.opts.TTL <= 0 {
 		p.opts.TTL = Duration(time.Minute)
 	}
