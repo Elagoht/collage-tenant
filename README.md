@@ -137,3 +137,26 @@ for it works through `collage dev` with no hosts file:
 
 A static build has no host, so every page is rendered without a tenant, absolute
 against `Config.BaseURL`. The build says so with the warning `tenant/no-host`.
+
+A static export is one host's site, `Config.BaseURL`'s. Per-tenant static export
+is not supported: serve a multi-tenant site from collage.
+
+- **The pages are rendered without a tenant**, whatever `BaseURL` is:
+  `tenant.ID(rc)` and `tenant.IDFromContext(ctx)` report none, and absolute URLs
+  are `BaseURL`'s. Setting `BaseURL` to a tenant's origin exports that origin's
+  URLs, not that tenant's data.
+- **The headers deployed with each file are `BaseURL`'s host's.** Since collage
+  v0.52.0 a build that a plugin checks, as this one does, asks the application
+  for every file, in process, with the host of `BaseURL`, or `localhost` without
+  one. That request passes through this plugin like any other: a host that is a
+  tenant's, or listed in `bypass`, is answered `200`; any other is answered `404`
+  (`503` when `Resolve` fails), and the build warns `capture-status` for every
+  file and deploys the error's headers. Set `BaseURL` to a tenant's origin, or
+  list its host in `bypass` — the product's own site, say — so the export is
+  answered.
+
+## Changes
+
+### v0.1.3
+
+- Requires collage v0.53.0. README: a static export is one host's site, `Config.BaseURL`'s, rendered without a tenant; its header capture is answered as `BaseURL`'s host, so that host must be a tenant's or bypassed. Nothing else changes.
