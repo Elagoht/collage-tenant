@@ -82,7 +82,7 @@ func TestEndToEnd(t *testing.T) {
 			}
 			return out, nil
 		}).
-		Static().WithDependency("posts").Build()
+		Static().WithDependencyTags("posts").Build()
 	if err := app.RegisterPage(post); err != nil {
 		t.Fatal(err)
 	}

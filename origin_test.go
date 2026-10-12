@@ -49,11 +49,7 @@ func TestBuildWarns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := collage.NewBuilder(app, collage.BuildOptions{OutDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	report, err := b.Build(context.Background())
+	report, err := collage.Build(context.Background(), app, collage.BuildOptions{OutDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

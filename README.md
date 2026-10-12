@@ -157,6 +157,10 @@ is not supported: serve a multi-tenant site from collage.
 
 ## Changes
 
+### v0.1.4
+
+- Requires collage v0.60.0 (and collage-meta v0.2.4, collage-sitemap v0.2.3, collage-indexnow v0.2.2). Nothing else changes.
+
 ### v0.1.3
 
 - Requires collage v0.53.0. README: a static export is one host's site, `Config.BaseURL`'s, rendered without a tenant; its header capture is answered as `BaseURL`'s host, so that host must be a tenant's or bypassed. Nothing else changes.

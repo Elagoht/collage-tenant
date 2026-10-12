@@ -91,13 +91,13 @@ func (p *Plugin) call(ctx context.Context, host string) (t Tenant, known bool, e
 // ID returns the tenant the request rc renders for, and whether there is one. It
 // is safe in a cached page: the tenant is part of the cache key.
 func ID(rc *collage.RenderContext) (string, bool) {
-	id, ok := collage.Varied(rc, varyHeader)
+	id, ok := collage.Varied(rc.Context(), varyHeader)
 	return id, ok && id != ""
 }
 
 // IDFromContext is ID for code that holds only a context: a page's StaticParams,
 // so each tenant's sitemap lists its own URLs; a document handler; an action.
 func IDFromContext(ctx context.Context) (string, bool) {
-	id, ok := collage.VariedContext(ctx, varyHeader)
+	id, ok := collage.Varied(ctx, varyHeader)
 	return id, ok && id != ""
 }
