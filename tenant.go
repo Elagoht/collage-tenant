@@ -3,7 +3,7 @@
 // domain — with every absolute URL the site writes following the host.
 //
 //	app, err := collage.New(&collage.Config{
-//		Plugins: []collage.Plugin{tenant.NewWith(tenant.Options{
+//		Plugins: []collage.Plugin{tenant.New(tenant.Options{
 //			Tenants: []tenant.Static{
 //				{ID: "acme", Origin: "https://acme.app.com", Hosts: []string{"acme.app.com", "acme.localhost"}},
 //			},
@@ -75,17 +75,19 @@ type Options struct {
 	// on app.com.
 	Bypass []string `json:"bypass"`
 	// TTL is how long Resolve's answer for a host is kept, "is no tenant"
-	// included. Default "1m".
-	TTL Duration `json:"ttl"`
+	// included, written as a string: "30s". Zero means "1m".
+	TTL collage.Duration `json:"ttl"`
 	// MaxHosts bounds how many hosts' answers are kept, so a client sending
 	// random Host headers cannot grow memory or make Resolve run without end.
-	// Default 10000.
+	// Zero means 10000; a negative value is an error.
 	MaxHosts int `json:"maxHosts"`
 }
 
 var (
 	// ErrNoTenants is returned by Init with neither Tenants nor Resolve.
 	ErrNoTenants = errors.New("tenant: Tenants or Resolve is required")
+	// ErrInvalidOptions is returned by Init for a negative TTL or MaxHosts.
+	ErrInvalidOptions = errors.New("tenant: invalid options")
 	// ErrInvalidTenant is returned by Init for a tenant without an ID, without
 	// hosts, or whose Origin is not a bare origin naming a host, and for a
 	// Bypass entry that is empty once normalized ("", "."). A Resolve answer
@@ -109,15 +111,13 @@ type Plugin struct {
 	cache  *hostCache
 }
 
-// New returns the plugin configured from the application's configuration alone.
-func New() *Plugin { return NewWith(Options{}) }
-
-// NewWith returns the plugin with opts as its starting point, which the
-// application's configuration is then decoded over.
-func NewWith(opts Options) *Plugin { return &Plugin{opts: opts} }
+// New returns the plugin with opts as its starting point, which the
+// application's configuration is then decoded over. With neither Tenants nor
+// Resolve, from opts or from the configuration, Init fails with ErrNoTenants.
+func New(opts Options) *Plugin { return &Plugin{opts: opts} }
 
 func (p *Plugin) Name() string                   { return Name }
-func (p *Plugin) Version() string                { return "0.1.4" }
+func (p *Plugin) Version() string                { return "0.2.0" }
 func (p *Plugin) Shutdown(context.Context) error { return nil }
 
 // Init reads the configuration, checks the tenants, and adds the middleware that
@@ -128,10 +128,16 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 		return err
 	}
 	p.opts = opts
-	if p.opts.TTL <= 0 {
-		p.opts.TTL = Duration(time.Minute)
+	if p.opts.TTL < 0 {
+		return fmt.Errorf("%w: ttl %s is negative", ErrInvalidOptions, time.Duration(p.opts.TTL))
 	}
-	if p.opts.MaxHosts <= 0 {
+	if p.opts.MaxHosts < 0 {
+		return fmt.Errorf("%w: maxHosts %d is negative", ErrInvalidOptions, p.opts.MaxHosts)
+	}
+	if p.opts.TTL == 0 {
+		p.opts.TTL = collage.Duration(time.Minute)
+	}
+	if p.opts.MaxHosts == 0 {
 		p.opts.MaxHosts = 10000
 	}
 	if len(p.opts.Tenants) == 0 && p.opts.Resolve == nil {
@@ -142,7 +148,7 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 	p.static = make(map[string]Tenant)
 	origins := make(map[string]string) // ID → origin
 	for _, s := range p.opts.Tenants {
-		origin, err := parseOrigin(s.Origin)
+		origin, err := collage.ParseOrigin(s.Origin)
 		if s.ID == "" || len(s.Hosts) == 0 || err != nil {
 			return fmt.Errorf("%w: %+v", ErrInvalidTenant, s)
 		}

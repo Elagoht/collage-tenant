@@ -14,13 +14,13 @@ var (
 )
 
 func TestOriginAndLookup(t *testing.T) {
-	p := tenant.NewWith(tenant.Options{Tenants: two, Bypass: []string{"app.test"}, Resolve: func(_ context.Context, host string) (tenant.Tenant, bool, error) {
+	p := tenant.New(tenant.Options{Tenants: two, Bypass: []string{"app.test"}, Resolve: func(_ context.Context, host string) (tenant.Tenant, bool, error) {
 		if host == "custom.test" {
 			return tenant.Tenant{ID: "initech", Origin: "https://initech.example"}, true, nil
 		}
 		return tenant.Tenant{}, false, nil
 	}})
-	app, err := newApp(p)
+	app, err := newApp(t, p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestOriginAndLookup(t *testing.T) {
 }
 
 func TestBuildWarns(t *testing.T) {
-	app, err := newApp(tenant.NewWith(tenant.Options{Tenants: two}))
+	app, err := newApp(t, tenant.New(tenant.Options{Tenants: two}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,9 +54,9 @@ func TestBuildWarns(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, f := range report.Findings {
-		if f.Rule == "tenant/no-host" {
+		if f.Rule == "tenant-no-host" {
 			return
 		}
 	}
-	t.Errorf("findings %+v, want tenant/no-host", report.Findings)
+	t.Errorf("findings %+v, want tenant-no-host", report.Findings)
 }

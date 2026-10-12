@@ -12,7 +12,7 @@ go get github.com/Elagoht/collage-tenant
 
 ```go
 app, err := collage.New(&collage.Config{
-	Plugins: []collage.Plugin{tenant.NewWith(tenant.Options{
+	Plugins: []collage.Plugin{tenant.New(tenant.Options{
 		Tenants: []tenant.Static{
 			{ID: "acme", Origin: "https://acme.app.com", Hosts: []string{"acme.app.com", "acme.localhost"}},
 		},
@@ -21,7 +21,7 @@ app, err := collage.New(&collage.Config{
 })
 ```
 
-Requires collage v0.50.0 or later; v0.42.0 added the origin hook this plugin
+Requires collage v0.61.0 or later; v0.42.0 added the origin hook this plugin
 implements and `collage.BaseURL(rc)`.
 
 ## How a request is answered
@@ -50,13 +50,15 @@ is `acme.test`.
 | `Tenants` | `tenants` | | Tenants known from configuration: `id`, `origin` (a bare origin, `https://acme.app.com`), `hosts` (at least one) |
 | `Resolve` | not configurable | | `func(ctx, host) (Tenant, bool, error)`: looks up a host `Tenants` does not list. Go only |
 | `Bypass` | `bypass` | | Hosts served without a tenant |
-| `TTL` | `ttl` | `"1m"` | How long `Resolve`'s answer for a host is kept |
+| `TTL` | `ttl` | `"1m"` | How long `Resolve`'s answer for a host is kept (`collage.Duration`) |
 | `MaxHosts` | `maxHosts` | `10000` | How many hosts' answers are kept |
 
 Either `Tenants` or `Resolve` is required. A tenant without an ID or hosts, an
 origin that is not a bare `http` or `https` origin naming a host, a host listed
 twice, one ID with two origins, a bypass host that is empty (`""`, `"."`), or a
-host both bypassed and a tenant's stops the application from starting. Durations are written as Go writes them, `"1m"` or `"30s"`.
+host both bypassed and a tenant's stops the application from starting, and so
+does a negative `ttl` or `maxHosts` (`ErrInvalidOptions`); zero is the default.
+A duration is a string, `"1m"` or `"30s"`: a number is an error.
 
 ```json
 {
@@ -136,7 +138,7 @@ for it works through `collage dev` with no hosts file:
 ## Static builds
 
 A static build has no host, so every page is rendered without a tenant, absolute
-against `Config.BaseURL`. The build says so with the warning `tenant/no-host`.
+against `Config.BaseURL`. The build says so with the warning `tenant-no-host`.
 
 A static export is one host's site, `Config.BaseURL`'s. Per-tenant static export
 is not supported: serve a multi-tenant site from collage.
@@ -156,6 +158,18 @@ is not supported: serve a multi-tenant site from collage.
   answered.
 
 ## Changes
+
+### v0.2.0
+
+The v1 conventions; requires collage v0.61.0 (and collage-meta v0.3.0, collage-sitemap v0.3.0, collage-indexnow v0.3.0 in tests).
+
+| Before | Now |
+| --- | --- |
+| `tenant.New()`, `tenant.NewWith(opts)` | `tenant.New(opts)` — one constructor; `tenant.New(tenant.Options{})` still needs `tenants` or `Resolve` |
+| `tenant.Duration` | `collage.Duration` for `TTL` |
+| `"ttl": 60` read as 60 nanoseconds | an error at startup: write `"ttl": "1m"` |
+| a negative `TTL` or `maxHosts` meant the default | `ErrInvalidOptions` at startup |
+| build warning `tenant/no-host` | `tenant-no-host` |
 
 ### v0.1.4
 

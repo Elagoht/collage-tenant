@@ -67,7 +67,7 @@ func (p *Plugin) resolve(ctx context.Context, host string) (Tenant, bool, error)
 		return Tenant{}, false, err
 	}
 	if known {
-		origin, err := parseOrigin(t.Origin)
+		origin, err := collage.ParseOrigin(t.Origin)
 		if t.ID == "" || err != nil {
 			return Tenant{}, false, fmt.Errorf("%w: Resolve answered %q with %+v", ErrInvalidTenant, host, t)
 		}

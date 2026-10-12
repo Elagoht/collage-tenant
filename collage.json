@@ -3,6 +3,7 @@
   "name": "elagoht/tenant",
   "description": "A collage plugin that serves one site to many customers, each on a host of its own — acme.app.com, globex.app.com, or a customer's own domain — with every absolute URL the site writes following the host.",
   "repository": "https://github.com/Elagoht/collage-tenant",
+  "setup": "List the tenants in plugins-config.json under `\"tenants\"` (`id`, `origin`, `hosts`), or pass `Resolve` from Go: `tenant.New(tenant.Options{Resolve: lookup})`. With neither, the application stops at startup with ErrNoTenants.",
   "config": {
     "type": "object",
     "description": "A collage plugin that serves one site to many customers, each on a host of its own — acme.app.com, globex.app.com, or a customer's own domain — with every absolute URL the site writes following the host.",
@@ -16,7 +17,7 @@
       },
       "maxHosts": {
         "type": "integer",
-        "description": "MaxHosts bounds how many hosts' answers are kept, so a client sending random Host headers cannot grow memory or make Resolve run without end. Default 10000."
+        "description": "MaxHosts bounds how many hosts' answers are kept, so a client sending random Host headers cannot grow memory or make Resolve run without end. Zero means 10000; a negative value is an error."
       },
       "tenants": {
         "type": "array",
@@ -41,20 +42,12 @@
         }
       },
       "ttl": {
-        "description": "TTL is how long Resolve's answer for a host is kept, \"is no tenant\" included. Default \"1m\".",
-        "anyOf": [
-          {
-            "type": "string",
-            "pattern": "^(\\d+(\\.\\d+)?(ns|us|µs|ms|s|m|h))+$",
-            "examples": [
-              "30s",
-              "5m"
-            ]
-          },
-          {
-            "type": "integer",
-            "description": "nanoseconds"
-          }
+        "type": "string",
+        "description": "TTL is how long Resolve's answer for a host is kept, \"is no tenant\" included, written as a string: \"30s\". Zero means \"1m\".",
+        "pattern": "^(\\d+(\\.\\d+)?(ns|us|µs|ms|s|m|h))+$",
+        "examples": [
+          "30s",
+          "5m"
         ]
       }
     },

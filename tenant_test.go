@@ -3,26 +3,35 @@ package tenant_test
 import (
 	"errors"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	tenant "github.com/Elagoht/collage-tenant"
 	"github.com/Elagoht/collage/pkg/collage"
+	"github.com/Elagoht/collage/pkg/collagetest"
 )
 
+// siteOptions is the test site: BaseURL app.example, a memory cache, the
+// template p.html, no home page, and plugins (tenant among them).
+func siteOptions(plugins ...collage.Plugin) []collagetest.SiteOption {
+	return []collagetest.SiteOption{
+		collagetest.WithoutHome(),
+		collagetest.WithPlugins(plugins...),
+		collagetest.WithTemplates(map[string]string{"p.html": `<p>{{.}}</p>`}),
+		collagetest.WithConfig(func(c *collage.Config) {
+			c.BaseURL = "https://app.example"
+			c.Cache = collage.CacheConfig{Enabled: true, Type: "memory", DefaultTTL: time.Hour}
+		}),
+	}
+}
+
 // newApp builds the app and starts it: plugin Init runs at Start, not in New.
-func newApp(p *tenant.Plugin) (*collage.App, error) {
-	app, err := collage.New(&collage.Config{
-		BaseURL:  "https://app.example",
-		Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
-		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>{{.}}</p>`)}}, Root: "t"},
-		Cache:    collage.CacheConfig{Enabled: true, Type: "memory", DefaultTTL: time.Hour},
-		Plugins:  []collage.Plugin{p},
-	})
+func newApp(t *testing.T, p *tenant.Plugin, more ...collagetest.SiteOption) (*collage.App, error) {
+	t.Helper()
+	site, err := collagetest.TrySite(t, append(siteOptions(p), more...)...)
 	if err != nil {
 		return nil, err
 	}
-	return app, app.Start()
+	return site.App, nil
 }
 
 func TestInit_Misconfigurations(t *testing.T) {
@@ -39,11 +48,13 @@ func TestInit_Misconfigurations(t *testing.T) {
 		"bypass conflict": {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{"A.test"}}, tenant.ErrBypassConflict},
 		"origin no host":  {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://:8080", Hosts: []string{"a.test"}}}}, tenant.ErrInvalidTenant},
 		"empty bypass":    {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{""}}, tenant.ErrInvalidTenant},
+		"negative ttl":    {tenant.Options{Tenants: two, TTL: -1}, tenant.ErrInvalidOptions},
+		"negative hosts":  {tenant.Options{Tenants: two, MaxHosts: -1}, tenant.ErrInvalidOptions},
 		"dot bypass":      {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{"."}}, tenant.ErrInvalidTenant},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := newApp(tenant.NewWith(c.opts)); !errors.Is(err, c.want) {
+			if _, err := newApp(t, tenant.New(c.opts)); !errors.Is(err, c.want) {
 				t.Errorf("err = %v, want %v", err, c.want)
 			}
 		})
@@ -51,7 +62,7 @@ func TestInit_Misconfigurations(t *testing.T) {
 }
 
 func TestInit_OneIDManyHosts(t *testing.T) {
-	_, err := newApp(tenant.NewWith(tenant.Options{Tenants: []tenant.Static{
+	_, err := newApp(t, tenant.New(tenant.Options{Tenants: []tenant.Static{
 		{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}},
 		{ID: "a", Origin: "https://a.example/", Hosts: []string{"a-custom.test"}},
 	}}))
@@ -60,15 +71,19 @@ func TestInit_OneIDManyHosts(t *testing.T) {
 	}
 }
 
-func TestDuration_JSON(t *testing.T) {
-	var d tenant.Duration
-	if err := d.UnmarshalJSON([]byte(`"90s"`)); err != nil || time.Duration(d) != 90*time.Second {
-		t.Errorf("\"90s\" = %v, %v", time.Duration(d), err)
+// What plugins-config.json may not say: a duration as a number (60 was 60ns, so
+// every answer expired at once), a negative maxHosts.
+func TestConfigurationRefusals(t *testing.T) {
+	for name, raw := range map[string]string{
+		"number ttl":        `{"ttl": 60}`,
+		"negative ttl":      `{"ttl": "-1m"}`,
+		"negative maxHosts": `{"maxHosts": -1}`,
+	} {
+		if _, err := newApp(t, tenant.New(tenant.Options{Tenants: two}), collagetest.WithPluginConfig(tenant.Name, raw)); err == nil {
+			t.Errorf("%s: started", name)
+		}
 	}
-	if err := d.UnmarshalJSON([]byte(`1000`)); err != nil || time.Duration(d) != time.Microsecond {
-		t.Errorf("1000 = %v, %v", time.Duration(d), err)
-	}
-	if err := d.UnmarshalJSON([]byte(`"soon"`)); err == nil {
-		t.Errorf("\"soon\" parsed")
+	if _, err := newApp(t, tenant.New(tenant.Options{Tenants: two}), collagetest.WithPluginConfig(tenant.Name, `{"ttl": "90s", "maxHosts": 5}`)); err != nil {
+		t.Errorf("a valid configuration: %v", err)
 	}
 }

@@ -3,15 +3,12 @@ package tenant_test
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	indexnow "github.com/Elagoht/collage-indexnow"
@@ -51,24 +48,6 @@ func newFakeIndexNow(t *testing.T) *fakeIndexNow {
 // IndexNow once per origin.
 func TestEndToEnd(t *testing.T) {
 	f := newFakeIndexNow(t)
-	app, err := collage.New(&collage.Config{
-		Server: collage.ServerConfig{Host: "localhost", Port: 3000},
-		Template: collage.TemplateConfig{FS: fstest.MapFS{
-			"t/layout.html": {Data: []byte(`<html><head>{{hoist "head"}}</head><body>{{slot "content"}}</body></html>`)},
-			"t/p.html":      {Data: []byte(`<main>post</main>`)},
-		}, Root: "t"},
-		Cache:  collage.CacheConfig{Enabled: true, Type: "memory", DefaultTTL: time.Hour},
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Plugins: []collage.Plugin{
-			tenant.NewWith(tenant.Options{Tenants: two}),
-			sitemap.New(sitemap.Options{}),
-			meta.New(meta.Options{}),
-			indexnow.New(indexnow.Options{Key: "k1234567", Endpoint: f.URL, Window: 50 * time.Millisecond, Backoff: time.Millisecond}),
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	slugs := map[string][]string{"acme": {"a1", "a2"}, "globex": {"g1"}}
 	post := collage.NewPage("post").
 		WithLayouts(collage.NewFragment("layout", "layout.html").Build()).
@@ -83,10 +62,21 @@ func TestEndToEnd(t *testing.T) {
 			return out, nil
 		}).
 		Static().WithDependencyTags("posts").Build()
-	if err := app.RegisterPage(post); err != nil {
-		t.Fatal(err)
-	}
-	c := collagetest.New(t, app.Handler())
+	site := collagetest.NewSite(t,
+		collagetest.WithoutHome(),
+		collagetest.WithTemplates(map[string]string{"p.html": `<main>post</main>`}),
+		collagetest.WithConfig(func(c *collage.Config) {
+			c.Cache = collage.CacheConfig{Enabled: true, Type: "memory", DefaultTTL: time.Hour}
+		}),
+		collagetest.WithPlugins(
+			tenant.New(tenant.Options{Tenants: two}),
+			sitemap.New(sitemap.Options{}),
+			meta.New(meta.Options{}),
+			indexnow.New(indexnow.Options{Key: "k1234567", Endpoint: f.URL, Window: collage.Duration(50 * time.Millisecond), Backoff: collage.Duration(time.Millisecond)}),
+		),
+		collagetest.WithRegister(post),
+	)
+	app, c := site.App, site.Client
 
 	acme := c.Get("http://acme.test/sitemap.xml").WantStatus(http.StatusOK).Body
 	if !strings.Contains(acme, "<loc>https://acme.example/posts/a1</loc>") ||
@@ -120,7 +110,4 @@ func TestEndToEnd(t *testing.T) {
 	if strings.Join(hosts, ",") != "acme.example,globex.example" {
 		t.Errorf("IndexNow hosts = %v, want acme.example and globex.example", hosts)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = app.Shutdown(ctx)
 }

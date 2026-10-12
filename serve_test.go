@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	tenant "github.com/Elagoht/collage-tenant"
@@ -19,36 +18,18 @@ import (
 // each writing the tenant it sees and the origin it is absolute against.
 func serving(t *testing.T, opts tenant.Options) *collagetest.Client {
 	t.Helper()
-	app, err := collage.New(&collage.Config{
-		BaseURL:  "https://app.example",
-		Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
-		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>{{.}}</p>`)}}, Root: "t"},
-		Cache:    collage.CacheConfig{Enabled: true, Type: "memory", DefaultTTL: time.Hour},
-		Plugins:  []collage.Plugin{tenant.NewWith(opts)},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	content := collage.NewFragment("p", "p.html").WithData(collage.LoadTagged(
 		func(_ context.Context, rc *collage.RenderContext) (string, []string, error) {
 			id, _ := tenant.ID(rc)
 			return id + "@" + collage.BaseURL(rc), nil, nil
 		})).Build()
-	if err := app.RegisterPage(collage.NewPage("home").WithContent(content).WithPath("en", "/").Incremental(time.Hour).Build()); err != nil {
-		t.Fatal(err)
-	}
+	home := collage.NewPage("home").WithContent(content).WithPath("en", "/").Incremental(time.Hour).Build()
 	doc := collage.NewDocument("d", "text/plain").WithPath("en", "/d.txt").
 		WithHandler(func(ctx context.Context, rc *collage.RenderContext) ([]byte, []string, error) {
 			id, _ := tenant.IDFromContext(ctx)
 			return []byte(id + "@" + collage.BaseURL(rc)), nil, nil
 		}).Incremental(time.Hour).Build()
-	if err := app.RegisterDocument(doc); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.Start(); err != nil {
-		t.Fatal(err)
-	}
-	return collagetest.New(t, app.Handler())
+	return collagetest.NewSite(t, append(siteOptions(tenant.New(opts)), collagetest.WithRegister(home, doc))...).Client
 }
 
 var two = []tenant.Static{
@@ -141,36 +122,22 @@ func TestResolverFailures(t *testing.T) {
 // the tenant.
 func TestResolverBlipDuringRender(t *testing.T) {
 	var calls atomic.Int32
-	app, err := collage.New(&collage.Config{
-		BaseURL:  "https://app.example",
-		Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
-		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>{{.}}</p>`)}}, Root: "t"},
-		Cache:    collage.CacheConfig{Enabled: true, Type: "memory", DefaultTTL: time.Hour},
-		Plugins: []collage.Plugin{tenant.NewWith(tenant.Options{
-			TTL: tenant.Duration(5 * time.Millisecond),
-			Resolve: func(context.Context, string) (tenant.Tenant, bool, error) {
-				if calls.Add(1) == 2 {
-					return tenant.Tenant{}, false, errors.New("database blip")
-				}
-				return tenant.Tenant{ID: "acme", Origin: "https://acme.example"}, true, nil
-			},
-		})},
+	plugin := tenant.New(tenant.Options{
+		TTL: collage.Duration(5 * time.Millisecond),
+		Resolve: func(context.Context, string) (tenant.Tenant, bool, error) {
+			if calls.Add(1) == 2 {
+				return tenant.Tenant{}, false, errors.New("database blip")
+			}
+			return tenant.Tenant{ID: "acme", Origin: "https://acme.example"}, true, nil
+		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	content := collage.NewFragment("p", "p.html").WithData(collage.LoadTagged(
 		func(_ context.Context, rc *collage.RenderContext) (string, []string, error) {
 			time.Sleep(20 * time.Millisecond) // past the TTL
 			return collage.BaseURL(rc), nil, nil
 		})).Build()
-	if err := app.RegisterPage(collage.NewPage("home").WithContent(content).WithPath("en", "/").Incremental(time.Hour).Build()); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.Start(); err != nil {
-		t.Fatal(err)
-	}
-	c := collagetest.New(t, app.Handler())
+	c := collagetest.NewSite(t, append(siteOptions(plugin),
+		collagetest.WithRegister(collage.NewPage("home").WithContent(content).WithPath("en", "/").Incremental(time.Hour).Build()))...).Client
 	for range 2 { // the second is the cached copy
 		if got := c.Get("http://acme.test/").WantStatus(http.StatusOK).Body; !strings.Contains(got, "<p>https://acme.example</p>") {
 			t.Errorf("GET acme.test = %q, want acme's origin", got)

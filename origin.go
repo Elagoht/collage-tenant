@@ -52,6 +52,6 @@ func (p *Plugin) Lookup(id string) (Tenant, bool) {
 // OnBuildFinished says what a static build cannot do: it has no host, so every
 // page was rendered without a tenant, absolute against Config.BaseURL.
 func (p *Plugin) OnBuildFinished(_ context.Context, ev *collage.BuildFinishedEvent) error {
-	ev.Warn("", "tenant/no-host", "a static build has no host: every page was rendered without a tenant, absolute against Config.BaseURL")
+	ev.Warn("", "tenant-no-host", "a static build has no host: every page was rendered without a tenant, absolute against Config.BaseURL")
 	return nil
 }

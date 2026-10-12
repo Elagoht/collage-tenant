@@ -1,14 +1,10 @@
 package tenant
 
 import (
-	"fmt"
 	"net"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/Elagoht/collage/pkg/collage"
 )
 
 // normalize is host as the plugin keys it: ASCII lower-cased, without a port or a
@@ -27,20 +23,6 @@ func normalize(host string) string {
 		}
 	}
 	return string(b)
-}
-
-// parseOrigin is collage.ParseOrigin, held to one more rule: the origin names a
-// host. "https://:8080" passes ParseOrigin, and collage ignores it as a
-// resolver's answer.
-func parseOrigin(raw string) (string, error) {
-	origin, err := collage.ParseOrigin(raw)
-	if err != nil {
-		return "", err
-	}
-	if u, err := url.Parse(origin); err != nil || u.Hostname() == "" {
-		return "", fmt.Errorf("tenant: origin %q names no host", raw)
-	}
-	return origin, nil
 }
 
 // hostCache keeps Resolve's answers per host, positive and negative, for a TTL,
