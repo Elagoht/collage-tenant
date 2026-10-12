@@ -2,6 +2,7 @@ package tenant_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,8 +49,8 @@ func TestInit_Misconfigurations(t *testing.T) {
 		"bypass conflict": {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{"A.test"}}, tenant.ErrBypassConflict},
 		"origin no host":  {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://:8080", Hosts: []string{"a.test"}}}}, tenant.ErrInvalidTenant},
 		"empty bypass":    {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{""}}, tenant.ErrInvalidTenant},
-		"negative ttl":    {tenant.Options{Tenants: two, TTL: -1}, tenant.ErrInvalidOptions},
-		"negative hosts":  {tenant.Options{Tenants: two, MaxHosts: -1}, tenant.ErrInvalidOptions},
+		"negative ttl":    {tenant.Options{Tenants: two, TTL: -1}, tenant.ErrInvalidConfig},
+		"negative hosts":  {tenant.Options{Tenants: two, MaxHosts: -1}, tenant.ErrInvalidConfig},
 		"dot bypass":      {tenant.Options{Tenants: []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}, Bypass: []string{"."}}, tenant.ErrInvalidTenant},
 	}
 	for name, c := range cases {
@@ -74,16 +75,40 @@ func TestInit_OneIDManyHosts(t *testing.T) {
 // What plugins-config.json may not say: a duration as a number (60 was 60ns, so
 // every answer expired at once), a negative maxHosts.
 func TestConfigurationRefusals(t *testing.T) {
-	for name, raw := range map[string]string{
-		"number ttl":        `{"ttl": 60}`,
-		"negative ttl":      `{"ttl": "-1m"}`,
-		"negative maxHosts": `{"maxHosts": -1}`,
+	for name, c := range map[string]struct {
+		raw  string
+		want func(error) bool
+	}{
+		"number ttl":   {`{"ttl": 60}`, func(err error) bool { return strings.Contains(err.Error(), `"ttl"`) }},
+		"negative ttl": {`{"ttl": "-1m"}`, func(err error) bool { return strings.Contains(err.Error(), `"ttl"`) }},
+		"negative maxHosts": {`{"maxHosts": -1}`, func(err error) bool {
+			return errors.Is(err, tenant.ErrInvalidConfig) && strings.Contains(err.Error(), "maxHosts")
+		}},
 	} {
-		if _, err := newApp(t, tenant.New(tenant.Options{Tenants: two}), collagetest.WithPluginConfig(tenant.Name, raw)); err == nil {
-			t.Errorf("%s: started", name)
+		_, err := newApp(t, tenant.New(tenant.Options{Tenants: two}), collagetest.WithPluginConfig(tenant.Name, c.raw))
+		if err == nil || !c.want(err) {
+			t.Errorf("%s: start = %v", name, err)
 		}
 	}
 	if _, err := newApp(t, tenant.New(tenant.Options{Tenants: two}), collagetest.WithPluginConfig(tenant.Name, `{"ttl": "90s", "maxHosts": 5}`)); err != nil {
 		t.Errorf("a valid configuration: %v", err)
+	}
+}
+
+// The configuration is decoded over New's Options; the slices it decodes into
+// must not be the caller's.
+func TestNewCopies(t *testing.T) {
+	mine := []tenant.Static{{ID: "a", Origin: "https://a.example", Hosts: []string{"a.test"}}}
+	bypass := []string{"x.test"}
+	_, err := newApp(t, tenant.New(tenant.Options{Tenants: mine, Bypass: bypass}),
+		collagetest.WithPluginConfig(tenant.Name, `{"tenants":[{"id":"b","origin":"https://b.example","hosts":["b.test"]}],"bypass":["y.test"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mine[0].ID != "a" || mine[0].Origin != "https://a.example" || len(mine[0].Hosts) != 1 || mine[0].Hosts[0] != "a.test" {
+		t.Errorf("the caller's Tenants were written: %+v", mine)
+	}
+	if bypass[0] != "x.test" {
+		t.Errorf("the caller's Bypass was written: %v", bypass)
 	}
 }

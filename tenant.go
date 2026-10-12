@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/Elagoht/collage/pkg/collage"
@@ -86,8 +87,8 @@ type Options struct {
 var (
 	// ErrNoTenants is returned by Init with neither Tenants nor Resolve.
 	ErrNoTenants = errors.New("tenant: Tenants or Resolve is required")
-	// ErrInvalidOptions is returned by Init for a negative TTL or MaxHosts.
-	ErrInvalidOptions = errors.New("tenant: invalid options")
+	// ErrInvalidConfig is returned by Init for a negative TTL or MaxHosts.
+	ErrInvalidConfig = errors.New("tenant: invalid configuration")
 	// ErrInvalidTenant is returned by Init for a tenant without an ID, without
 	// hosts, or whose Origin is not a bare origin naming a host, and for a
 	// Bypass entry that is empty once normalized ("", "."). A Resolve answer
@@ -114,7 +115,18 @@ type Plugin struct {
 // New returns the plugin with opts as its starting point, which the
 // application's configuration is then decoded over. With neither Tenants nor
 // Resolve, from opts or from the configuration, Init fails with ErrNoTenants.
-func New(opts Options) *Plugin { return &Plugin{opts: opts} }
+//
+// Tenants (each one's Hosts too) and Bypass are copied, because encoding/json
+// decodes into the slices it finds, and would otherwise write the
+// configuration's values into the caller's.
+func New(opts Options) *Plugin {
+	opts.Tenants = slices.Clone(opts.Tenants)
+	for i := range opts.Tenants {
+		opts.Tenants[i].Hosts = slices.Clone(opts.Tenants[i].Hosts)
+	}
+	opts.Bypass = slices.Clone(opts.Bypass)
+	return &Plugin{opts: opts}
+}
 
 func (p *Plugin) Name() string                   { return Name }
 func (p *Plugin) Version() string                { return "0.2.0" }
@@ -129,10 +141,10 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 	}
 	p.opts = opts
 	if p.opts.TTL < 0 {
-		return fmt.Errorf("%w: ttl %s is negative", ErrInvalidOptions, time.Duration(p.opts.TTL))
+		return fmt.Errorf("%w: ttl %s is negative", ErrInvalidConfig, time.Duration(p.opts.TTL))
 	}
 	if p.opts.MaxHosts < 0 {
-		return fmt.Errorf("%w: maxHosts %d is negative", ErrInvalidOptions, p.opts.MaxHosts)
+		return fmt.Errorf("%w: maxHosts %d is negative", ErrInvalidConfig, p.opts.MaxHosts)
 	}
 	if p.opts.TTL == 0 {
 		p.opts.TTL = collage.Duration(time.Minute)

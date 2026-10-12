@@ -21,7 +21,7 @@ app, err := collage.New(&collage.Config{
 })
 ```
 
-Requires collage v0.61.0 or later; v0.42.0 added the origin hook this plugin
+Requires collage v0.61.1 or later; v0.42.0 added the origin hook this plugin
 implements and `collage.BaseURL(rc)`.
 
 ## How a request is answered
@@ -57,7 +57,7 @@ Either `Tenants` or `Resolve` is required. A tenant without an ID or hosts, an
 origin that is not a bare `http` or `https` origin naming a host, a host listed
 twice, one ID with two origins, a bypass host that is empty (`""`, `"."`), or a
 host both bypassed and a tenant's stops the application from starting, and so
-does a negative `ttl` or `maxHosts` (`ErrInvalidOptions`); zero is the default.
+does a negative `ttl` or `maxHosts` (`ErrInvalidConfig`); zero is the default.
 A duration is a string, `"1m"` or `"30s"`: a number is an error.
 
 ```json
@@ -161,15 +161,16 @@ is not supported: serve a multi-tenant site from collage.
 
 ### v0.2.0
 
-The v1 conventions; requires collage v0.61.0 (and collage-meta v0.3.0, collage-sitemap v0.3.0, collage-indexnow v0.3.0 in tests).
+The v1 conventions; requires collage v0.61.1 (and collage-meta v0.3.0, collage-sitemap v0.3.0, collage-indexnow v0.3.0 in tests).
 
 | Before | Now |
 | --- | --- |
 | `tenant.New()`, `tenant.NewWith(opts)` | `tenant.New(opts)` — one constructor; `tenant.New(tenant.Options{})` still needs `tenants` or `Resolve` |
 | `tenant.Duration` | `collage.Duration` for `TTL` |
 | `"ttl": 60` read as 60 nanoseconds | an error at startup: write `"ttl": "1m"` |
-| a negative `TTL` or `maxHosts` meant the default | `ErrInvalidOptions` at startup |
+| a negative `TTL` or `maxHosts` meant the default | `ErrInvalidConfig` at startup |
 | build warning `tenant/no-host` | `tenant-no-host` |
+| plugins-config.json was decoded into the `Tenants`/`Bypass` slices passed to `New` | `New` copies them; the caller's values are left alone |
 
 ### v0.1.4
 

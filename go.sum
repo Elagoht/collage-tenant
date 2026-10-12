@@ -2,6 +2,8 @@ github.com/Elagoht/collage v0.60.0 h1:MNA52MvIGEkZOnUyd6YYDDgbVR38nA3SU8dZ9X//xD
 github.com/Elagoht/collage v0.60.0/go.mod h1:tyGWGpujZXtCFFxn9pjws85HOFOt4QdiuRswwQhj1Qw=
 github.com/Elagoht/collage v0.61.0 h1:qmJESiwvoOYte6VGtxNZrG0z4Os1by9CBncaUHNvzYw=
 github.com/Elagoht/collage v0.61.0/go.mod h1:tyGWGpujZXtCFFxn9pjws85HOFOt4QdiuRswwQhj1Qw=
+github.com/Elagoht/collage v0.61.1 h1:p02DJqz/BuTEaVb1H+I5HXU+aMzppYVoBJokhjoJMgE=
+github.com/Elagoht/collage v0.61.1/go.mod h1:tyGWGpujZXtCFFxn9pjws85HOFOt4QdiuRswwQhj1Qw=
 github.com/Elagoht/collage-indexnow v0.2.2 h1:EZiWgya3yIsZWpcxgGoBVa0mTfvHCDZAq3MktZukshs=
 github.com/Elagoht/collage-indexnow v0.2.2/go.mod h1:PJYdSCjOvZlhkxnEsY74jR6eNniiSaewcJzvj2cMqoA=
 github.com/Elagoht/collage-indexnow v0.3.0 h1:HcPnrJX0l1GEmz0BMi7LwqDcmSqFJdg2YqV5y5pc61o=
