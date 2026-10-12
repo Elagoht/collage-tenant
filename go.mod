@@ -4,7 +4,7 @@ module github.com/Elagoht/collage-tenant
 
 go 1.26
 
-require github.com/Elagoht/collage v0.61.1
+require github.com/Elagoht/collage v0.61.2
 
 require (
 	github.com/Elagoht/collage-indexnow v0.3.0

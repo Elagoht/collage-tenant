@@ -21,7 +21,7 @@ app, err := collage.New(&collage.Config{
 })
 ```
 
-Requires collage v0.61.1 or later; v0.42.0 added the origin hook this plugin
+Requires collage v0.61.2 or later; v0.42.0 added the origin hook this plugin
 implements and `collage.BaseURL(rc)`.
 
 ## How a request is answered
@@ -161,7 +161,7 @@ is not supported: serve a multi-tenant site from collage.
 
 ### v0.2.0
 
-The v1 conventions; requires collage v0.61.1 (and collage-meta v0.3.0, collage-sitemap v0.3.0, collage-indexnow v0.3.0 in tests).
+The v1 conventions; requires collage v0.61.2 (and collage-meta v0.3.0, collage-sitemap v0.3.0, collage-indexnow v0.3.0 in tests).
 
 | Before | Now |
 | --- | --- |
